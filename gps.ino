@@ -2,9 +2,11 @@
 #define _USE_MATH_DEFINES
 #include <Adafruit_GPS.h>
 #include <math.h>
-
+#include "src/GpsPosition/GpsPosition.h"
 // what's the name of the hardware serial port?
 #define GPSSerial Serial1
+
+#define GpsPositionsLength 10
 
 // Connect to the GPS on the hardware port
 Adafruit_GPS GPS(&GPSSerial);
@@ -12,49 +14,73 @@ Adafruit_GPS GPS(&GPSSerial);
 // Set GPSECHO to 'false' to turn off echoing the GPS data to the Serial console
 // Set to 'true' if you want to debug and listen to the raw GPS sentences
 #define GPSECHO false
-  float last_latitude = 0;
-  float last_longitude = 0;
+const float log_mindistance = .1;
+const float log_distance = 10;
+const float log_speed = 10;
+const float log_angle = 5;
+
+float last_latitude = 0;
+float last_longitude = 0;
+float last_speed = 0;
+float last_angle = 0;
 uint32_t gpsTimer = millis();
 
-/*[
-       {"valid":true, "lat":37.727, "lng":-96.707, "date":"2020-05-12T19:21:26.000Z", "ang": 182},
-       {"valid":true, "lat":38.971, "lng":-92.713, "date":"2020-05-12T19:21:26.000Z", "ang": 182},
-             {"valid":true, "lat":36.172, "lng":-89.415, "date":"2020-05-12T19:21:26.000Z", "ang": 182}
-       ];*/
+
+
+GpsPosition gpsPositions[GpsPositionsLength];
+GpsPosition currentPosition = GpsPosition();
+
+int gpsPositionsIndex = 0;
+
 void getGpsDataHandler(){
   String Date = "";
   String Data = "";
 
   if (Server.arg("Date")== ""){     //Parameter not found
-  
-  Server.send(200, "text/json", "{\"valid\":false, \"exist\":true}"  );
-  Serial.println("date is not selected");
-  return;
+    Server.send(200, "text/json", "{\"valid\":false, \"exist\":true}"  );
+    Serial.println("date is not selected");
+    return;
   }else{     //Parameter found
-  
-  Date = Server.arg("Date");     //Gets the value of the query parameter
-  
+    Date = Server.arg("Date");     //Gets the value of the query parameter
   }
 
-    
-     File file = SD.open("/" + Date + ".json");
-    if(!file){
-        Serial.println("No Data for " + Date);
-        Server.send(200, "text/json", "{\"valid\":true, \"exist\":false}");
-        return;
-    }
-
-    Serial.print("Read from file");
-    while(file.available()){
-        Data += char(file.read());
-    }
-    file.close();
-    Server.send(200, "text/json", "[" + Data + "]");
-    Serial.println("[" + Data + "]");
+  File file = SD.open("/" + Date + ".json");
+  if(!file){
+      Serial.println("No Data for " + Date);
+      Server.send(200, "text/json", "{\"valid\":true, \"exist\":false}");
+      return;
+  }
+  Serial.print("Read from file");
+  while(file.available()){
+      Data += char(file.read());
+  }
+  file.close();
+  Server.send(200, "text/json", "[" + Data + "]");
+  Serial.println("[" + Data + "]");
 }
 
 void gpsGetCurrentPosition(){
-    Server.send(200, "application/json", gpsGetCurrentPositionJson());
+    Server.send(200, "application/json", currentPosition.getJson());
+}
+
+void gpsGetCurrentPath(){
+  String data = "[";
+  
+  for (int i = gpsPositionsIndex-1; i > 0; i--){
+    if(i != gpsPositionsIndex -1){
+      data = data + ","; 
+    }
+    data = data + gpsPositions[i].getJson();
+  }
+  for (int i = GpsPositionsLength-1; i > gpsPositionsIndex; i--){
+    if(i != gpsPositionsIndex -1){
+      data = data + ","; 
+    }
+    data = data + gpsPositions[i].getJson();
+  } 
+  data = data + "]";
+  Serial.print("gpsGetCurrentPath " + String(gpsPositionsIndex) + data);
+  Server.send(200, "application/json", data);
 }
 
 float degreesToRadians(float degrees) {
@@ -100,70 +126,22 @@ void gpsSetup() {
   delay(1000);
   // Ask for firmware version
   GPSSerial.println(PMTK_Q_RELEASE);
+
+  //init the gpsPositions Array
+
+  for(int i = 0; i < GpsPositionsLength; i ++){
+    gpsPositions[i] = GpsPosition();
+  }
 }
 
 void gpsHttpSetup() {
    Server.on("/getGpsData", getGpsDataHandler);
    Server.on("/getCurrentPosition", gpsGetCurrentPosition);
+   Server.on("/getCurrentPath", gpsGetCurrentPath);
 }
 
-String gpsGetGpsTimeStamp(String type){
-  int differenceOfHours = 0;
-  String Day;
-  String Month = String(GPS.month);
-  String Year = "20" + String(GPS.year);
-  if(GPS.latitudeDegrees >= 0){
-    differenceOfHours = GPS.latitudeDegrees/15;
-  }else{
-    differenceOfHours = 24 + GPS.latitudeDegrees/15;
-    }
 
-  String Seconds = String(GPS.seconds);
-  String Minutes = String(GPS.minute);
-  int Hours = int(GPS.hour) - differenceOfHours;
-  if(Hours > 0){
-    Day = String(GPS.day);
-  }
-  else{
-    Hours = Hours + 24;
-    Day = String(GPS.day - 1);
-  }
-
-  String S_Hours = String(Hours);
-
-  if (Month.length() == 1){
-    Month = "0" + Month;      
-  }
-
-  if (Day.length() == 1){
-    Day = "0" + Day;      
-  }
-
-  if (S_Hours.length() == 1){
-    S_Hours = "0" + S_Hours;      
-  }
-
-  if (Minutes.length() == 1){
-    Minutes = "0" + Minutes;      
-  }
-
-  if (Seconds.length() == 1){
-    Seconds = "0" + Seconds;      
-  }
-
-  if(type == "name"){
-    return Year +"-"+ Month +"-"+ Day +".json"; 
-  }else if(type == "data"){
-    return S_Hours + ":" + Minutes + ":" + Seconds; 
-  }else{
-    Serial.println("specify time stamp type");
-    return "";
-}}
-String gpsGetCurrentPositionJson(){
-    return "{\"valid\":true, \"exist\":true, \"lat\":"  + String(GPS.latitudeDegrees, 3) + ", \"lng\":"  + String(GPS.longitudeDegrees, 3) + ", \"time\":\"" + gpsGetGpsTimeStamp("data") + "\", \"ang\": " + String(GPS.angle, 3) + "}";
-
-}
-
+String currentFilename = "";
 void gpsLoop(){
 
 
@@ -189,21 +167,30 @@ void gpsLoop(){
   if (millis() - gpsTimer > 10000) {
     gpsTimer = millis();  // reset the gpsTimer
     if(GPS.fix){
-  if (  distanceInKmBetweenEarthCoordinates(last_latitude, last_longitude, GPS.latitudeDegrees, GPS.longitudeDegrees)>0.1){ // make sure that the function is working   
-     if (!SD.open("/" + gpsGetGpsTimeStamp("name"))){ 
-        String positionJson = gpsGetCurrentPositionJson();
-        writeSDFile(SD, "/" + gpsGetGpsTimeStamp("name"), positionJson);
-     }else{
-       String positionJson = gpsGetCurrentPositionJson();
-       appendSDFile(SD, "/" + gpsGetGpsTimeStamp("name"), positionJson);
-     }
-     last_latitude = GPS.latitudeDegrees;
-     last_longitude = GPS.longitudeDegrees;
-  }else{
-    Serial.println("didn't move alot");
-  }
+      currentPosition = GpsPosition(GPS);
+      if (currentFilename == ""){
+        currentFilename = currentPosition.getFilename() + ".json";
+        writeFile("/gpsLogs/" + currentFilename, currentPosition.getJson());
+        gpsPositions[gpsPositionsIndex] = currentPosition;
+         gpsPositionsIndex++;
+      }
+      float distanceMoved =  distanceInKmBetweenEarthCoordinates(last_latitude, last_longitude, GPS.latitudeDegrees, GPS.longitudeDegrees);
+      if ( distanceMoved >= log_mindistance && ( distanceMoved >= log_distance || abs(last_angle - GPS.angle) >= log_angle ||  abs(last_speed - GPS.speed) >= log_speed)){ 
+         appendFile( "/gpsLogs/" + currentFilename, currentPosition.getJson());
+         last_latitude = GPS.latitudeDegrees;
+         last_longitude = GPS.longitudeDegrees;
+         last_speed = GPS.speed;
+         last_angle = GPS.angle;
+         gpsPositions[gpsPositionsIndex] = currentPosition;
+         gpsPositionsIndex++;
+         if (gpsPositionsIndex >= GpsPositionsLength){
+          gpsPositionsIndex = 0;
+         }
+      }else{
+        Serial.println("distance Moved was only " + String(distanceMoved));
+      }
     }else{
         Serial.println("No GPS Fix!~");
-     }
-   }
+    }
+ }
 }

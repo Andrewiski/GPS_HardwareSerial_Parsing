@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-type" content="text/html; charset=utf-8">
+  <title>Config</title>
+        <style>
+            #map {
+                height: 700px;
+                width: 100%;
+            }
+        </style>
+        <script type="text/javascript" src="/jquery-3.5.0.min.js"></script>
+        
+        <script>
+		    var getMenu = function(){
+				$( "div.menu" ).load( "/autoconnectMenu" );
+			}
+            $(document).ready(function() {
+				getMenu();
+            });
+        </script>
+    </head>
+    <body>
+	
+        <div style="width:100%">
+		    <div style="display:inline-block"><h3>Config Page</h3></div>
+			<div style="display:inline-block; float:right"><div class="menu"></div></div>
+		<div style="width:100%">
+			<table style="width:100%">
+				<tr>
+					<td style="width:100px">
+						Google API Key <input type="text" value="" />
+					</td>
+				</tr>
+			</table>
+		</div>
+        
+    </body>
+</html>

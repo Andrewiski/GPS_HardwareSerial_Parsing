@@ -1,13 +1,13 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <AutoConnect.h>
-#include <SPI.h>
 #include <ESPmDNS.h>
 
 
 WebServer Server;
 AutoConnect portal(Server);
 AutoConnectConfig Config("", "");
+AutoConnectAux    menuConfig("/config.htm", "Config");   // Step #1 as the above procedure
 const char* mDnsHostName = "Teo";  
 
 void sendRedirect(String uri) {
@@ -40,48 +40,53 @@ void setup()
   Config.tickerPort = LED_BUILTIN;
   Config.tickerOn = LOW;
   Config.homeUri = "/";
-  Config.immediateStart = true;
+  Config.immediateStart = false;
   Config.retainPortal = true;
-  Config.portalTimeout = 1000;
+  Config.portalTimeout = 30000;  //Wait 30 Seconds to Connect to AP if Not found Start Captive, This will delay our Loop Start
   Config.bootUri = AC_ONBOOTURI_HOME;
   Config.autoReset=true;
+  Config.autoRise = true;
   //Config. menuItems = AC_MENUITEM_CONFIGNEW | AC_MENUITEM_OPENSSIDS | AC_MENUITEM_DISCONNECT | AC_MENUITEM_RESET | AC_MENUITEM_UPDATE | AC_MENUITEM_HOME;
   //Config.autoSave = AC_SAVECREDENTIAL_NEVER;
-  //portal.config(Config);
+  portal.config(Config);
   portal.onDetect(atDetect); 
+  portal.onNotFound(handleNotFound);
+  //server.on("/config", handleConfig);
+  portal.join({ menuConfig });
   Serial.println("Starting File System."); 
   setupFileSystem();
   delay(100);
-  Serial.println("Starting Http Server.");
-  setupHttpServer();
-  delay(100);
+  
   Serial.println("Starting GPS.");
   gpsSetup();
   delay(100);
   Serial.println("Starting GPS Http.");
   gpsHttpSetup();
   delay(100);
-  Serial.println("Portal Being.");
+  Serial.println("Starting Http Server.");
+  setupHttpServer();
+  delay(100);
+  Serial.println("MDNS Being.");
   MDNS.begin(mDnsHostName);
   MDNS.setInstanceName("teo's gps tracker");
   MDNS.addService("_http", "_tcp", 80);
+  Serial.println("Portal Being.");
   if ( portal.begin() ){
     Serial.println("Started, IP:" + WiFi.localIP().toString());
   }else {  
     Serial.println("Connection failed.");
     
-}
-  }  
+  }
+}  
 
+bool portalBegin = false;
 
 
 void loop() // run over and over again
 {
   portal.handleClient();
   gpsLoop();
-    if (WiFi.status() == WL_IDLE_STATUS) {
-  Serial.println("Wifi is Idle Reseting...");
-  ESP.restart();
-  delay(100);
-  } 
+//  if (WiFi.status() !== WL_CONNECTED) {
+//    
+//  } 
 }

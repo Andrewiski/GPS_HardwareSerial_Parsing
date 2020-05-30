@@ -1,15 +1,6 @@
- #define FILESYSTEM SPIFFS
-// You only need to format the filesystem once
-#define FORMAT_FILESYSTEM false
-#define useSDCard true
-#if FILESYSTEM == FFat
-#include <FFat.h>
-#endif
-#if FILESYSTEM == SPIFFS
-#include <SPIFFS.h>
-#endif
-#include "FS.h"
-#include "SD.h"
+
+#include <SPI.h>
+#include <SD.h>
 
 File fsUploadFile;
 uint8_t sdCardType = CARD_NONE;
@@ -60,60 +51,43 @@ String getContentType(String filename) {
   return "text/plain";
 }
 
-bool exists(fs::FS &fs, String path){
+bool exists( String path){
   bool yes = false;
-  File file = fs.open(path, "r");
-  if(!file.isDirectory()){
+  File file = SD.open(path, "r");
+  if(file && file.isDirectory()== false){
     yes = true;
   }
   file.close();
   return yes;
 }
 
+
+
 bool handleFileRead(String path) {
-   if (path.startsWith("/sd/")==true){
-    Serial.println("handleFileRead SD: " + path);
-    return handleFileReadFS(SD, path);
-   }else{
-    Serial.println("handleFileRead SPI: " + path);
-    return handleFileReadFS(FILESYSTEM, path);
-   }  
-}
-
-bool handleFileReadSD(String path) {
-    Serial.println("handleFileReadSD: " + path);
-    return handleFileReadFS(SD, path);
-    
-}
-
-bool handleFileReadFS(fs::FS &fs, String path) {
-  
+  Serial.println("handleFileRead SD: " + path);
   if (path.endsWith("/")) {
-    path += "index.htm";
-    Serial.println("handleFileReadFS: index.htm!");
+    path += "webserver/index.htm";
+    //Serial.println("handleFileRead: index.htm!");
   }
   String contentType = getContentType(path);
   String pathWithGz = path + ".gz";
-  if (exists(fs, pathWithGz) || exists(fs, path)) {
-    if (exists(fs, pathWithGz)) {
+  if (exists( pathWithGz) || exists( path)) {
+    if (exists(pathWithGz)) {
       path += ".gz";
+      Serial.println("handleFileRead SD with gz: " + path);
     }
-    File file = fs.open(path, "r");
+    File file = SD.open(path, "r");
     Server.streamFile(file, contentType);
     file.close();
     return true;
+  }else{
+    return false;  
   }
-  return false;
+  
 }
+
 
 void handleFileUpload() {
-    handleFileUploadFS(FILESYSTEM);
-}
-void handleFileUploadSD() {
-    handleFileUploadFS(SD);
-}
-
-void handleFileUploadFS(fs::FS &fs) {
 
   if (Server.uri() != "/edit") {
     return;
@@ -126,7 +100,7 @@ void handleFileUploadFS(fs::FS &fs) {
       filename = "/" + filename;
     }
     Serial.print("handleFileUpload Name: "); Serial.println(filename);
-    fsUploadFile = fs.open(filename, "w");
+    fsUploadFile = SD.open(filename, "w");
     filename = String();
   } else if (upload.status == UPLOAD_FILE_WRITE) {
     //Serial.print("handleFileUpload Data: "); Serial.println(upload.currentSize);
@@ -142,14 +116,6 @@ void handleFileUploadFS(fs::FS &fs) {
 }
 
 void handleFileDelete() {
-    handleFileDeleteFS(FILESYSTEM);
-}
-
-void handleFileDeleteSD() {
-    handleFileDeleteFS(SD);
-}
-
-void handleFileDeleteFS(fs::FS &fs) {
 
   if (Server.args() == 0) {
     return Server.send(500, "text/plain", "BAD ARGS");
@@ -159,23 +125,15 @@ void handleFileDeleteFS(fs::FS &fs) {
   if (path == "/") {
     return Server.send(500, "text/plain", "BAD PATH");
   }
-  if (!exists(fs, path)) {
+  if (!exists(path)) {
     return Server.send(404, "text/plain", "FileNotFound");
   }
-  fs.remove(path);
+  SD.remove(path);
   Server.send(200, "text/plain", "");
   path = String();
 }
 
 void handleFileCreate() {
-    handleFileCreateFS(FILESYSTEM);
-}
-
-void handleFileCreateSD() {
-    handleFileCreateFS(SD);
-}
-
-void handleFileCreateFS(fs::FS &fs) {
 
   if (Server.args() == 0) {
     return Server.send(500, "text/plain", "BAD ARGS");
@@ -185,10 +143,10 @@ void handleFileCreateFS(fs::FS &fs) {
   if (path == "/") {
     return Server.send(500, "text/plain", "BAD PATH");
   }
-  if (exists(fs, path)) {
+  if (exists( path)) {
     return Server.send(500, "text/plain", "FILE EXISTS");
   }
-  File file = fs.open(path, "w");
+  File file = SD.open(path, "w");
   if (file) {
     file.close();
   } else {
@@ -199,14 +157,6 @@ void handleFileCreateFS(fs::FS &fs) {
 }
 
 void handleFileList() {
-    handleFileListFS(FILESYSTEM);
-}
-
-void handleFileListSD() {
-    handleFileListFS(SD);
-}
-
-void handleFileListFS(fs::FS &fs) {
   
   if (!Server.hasArg("dir")) {
     Server.send(500, "text/plain", "BAD ARGS");
@@ -217,8 +167,8 @@ void handleFileListFS(fs::FS &fs) {
   Serial.println("handleFileList: " + path);
 
 
-  File root = fs.open(path);
-  path = String();
+  File root = SD.open(path);
+  //path = String();
 
   String output = "[";
   if(root.isDirectory()){
@@ -230,7 +180,7 @@ void handleFileListFS(fs::FS &fs) {
           output += "{\"dev\":\"spiffs\", \"type\":\"";
           output += (file.isDirectory()) ? "dir" : "file";
           output += "\",\"name\":\"";
-          output += String(file.name()).substring(1);
+          output += String(file.name()).substring(path.length());
           output += "\"}";
           file = root.openNextFile();
       }
@@ -243,13 +193,13 @@ void handleFileListFS(fs::FS &fs) {
 
 
 
-void listSDDir(fs::FS &fs, String dirname, uint8_t levels){
+void listDir( String dirname, uint8_t levels){
     Serial.println("Listing directory: " + dirname);
     if(sdCardType == CARD_NONE){
         Serial.println("No SD card attached");
         return;
     }
-    File root = fs.open(dirname);
+    File root = SD.open(dirname);
     if(!root){
         Serial.println("Failed to open directory");
         return;
@@ -265,7 +215,7 @@ void listSDDir(fs::FS &fs, String dirname, uint8_t levels){
             Serial.print("  DIR : ");
             Serial.println(file.name());
             if(levels){
-                listSDDir(fs, file.name(), levels -1);
+                listDir(file.name(), levels -1);
             }
         } else {
             Serial.print("  FILE: ");
@@ -277,39 +227,39 @@ void listSDDir(fs::FS &fs, String dirname, uint8_t levels){
     }
 }
 
-void createSDDir(fs::FS &fs, String path){
+void createDir( String path){
     Serial.println("Creating Dir: " + path);
     if(sdCardType == CARD_NONE){
         Serial.println("No SD card attached");
         return;
     }
-    if(fs.mkdir(path)){
+    if(SD.mkdir(path)){
         Serial.println("Dir created");
     } else {
         Serial.println("mkdir failed");
     }
 }
 
-void removeSDDir(fs::FS &fs, String path){
+void removeDir(String path){
     Serial.println("Removing Dir: "  + path);
     if(sdCardType == CARD_NONE){
         Serial.println("No SD card attached");
         return;
     }
-    if(fs.rmdir(path)){
+    if(SD.rmdir(path)){
         Serial.println("Dir removed");
     } else {
         Serial.println("rmdir failed");
     }
 }
 
-void readSDFile(fs::FS &fs, String path){
+void readFile( String path){
     Serial.println("Reading file: " + path);
     if(sdCardType == CARD_NONE){
         Serial.println("No SD card attached");
         return;
     }
-    File file = fs.open(path);
+    File file = SD.open(path);
     if(!file){
         Serial.println("Failed to open file for reading");
         return;
@@ -322,13 +272,13 @@ void readSDFile(fs::FS &fs, String path){
     file.close();
 }
 
-void writeSDFile(fs::FS &fs, String path, String message){
+void writeFile( String path, String message){
     Serial.println("Writing file: " +  path);
     if(sdCardType == CARD_NONE){
         Serial.println("No SD card attached");
         return;
     }
-    File file = fs.open(path, FILE_WRITE);
+    File file = SD.open(path, FILE_WRITE);
     if(!file){
         Serial.println("Failed to open file for writing");
         return;
@@ -341,13 +291,13 @@ void writeSDFile(fs::FS &fs, String path, String message){
     file.close();
 }
 
-void appendSDFile(fs::FS &fs, String path, String message){
+void appendFile( String path, String message){
     Serial.println("Appending to SD file: " + path);
     if(sdCardType == CARD_NONE){
         Serial.println("No SD card attached");
         return;
     }
-    File file = fs.open(path, FILE_APPEND);
+    File file = SD.open(path, FILE_APPEND);
     if(!file){
         Serial.println("Failed to open file for appending");
         return;
@@ -362,18 +312,7 @@ void appendSDFile(fs::FS &fs, String path, String message){
 
 
 void setupFileSystem(){
-  if (FORMAT_FILESYSTEM) FILESYSTEM.format();
-  FILESYSTEM.begin();
-  File root = FILESYSTEM.open("/");
-  File file = root.openNextFile();
-  while(file){
-      String fileName = file.name();
-      size_t fileSize = file.size();
-      Serial.printf("SPIFFS File: %s, size: %s\n", fileName.c_str(), formatBytes(fileSize).c_str());
-      file = root.openNextFile();
-  }
-
-  if(useSDCard){
+  
     Serial.println("Checking for SD Card");
       if(SD.begin()){
         Serial.println("SD Card Adapter Found");
@@ -391,7 +330,6 @@ void setupFileSystem(){
           } else {
               Serial.println("UNKNOWN");
           }
-        
           Serial.printf("SD Card Size: %lluMB\n", SD.cardSize() / (1024 * 1024));
           Serial.printf("Total space: %lluMB\n", SD.totalBytes() / (1024 * 1024));
           Serial.printf("Used space: %lluMB\n", SD.usedBytes() / (1024 * 1024));
@@ -400,13 +338,18 @@ void setupFileSystem(){
       }else{
         Serial.println("SD Card Adapter Not Found");
       }
-  }
-  
   Serial.printf("\n");
  
 }
 
+bool hasSDCard(){
+  if (sdCardType == CARD_NONE){
+    return false;
+  }else{
+    return true;
+  }
+}
 void handleRoot(){
-  File file = SPIFFS.open("/index.htm", "r");
+  File file = SD.open("/webserver/index.htm", "r");
   Server.streamFile(file, "text/html");
 }
