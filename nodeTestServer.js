@@ -82,9 +82,16 @@ var handleFileRequest = function(request, response, filePath){
                 response.end('Sorry, check with the site admin for error: '+error.code+' ..\n');
             }
         }
-        else {
-            response.writeHead(200, { 'Content-Type': contentType });
-            response.end(content, 'utf-8');
+		else {
+			response.writeHead(200, { 'Content-Type': contentType });
+			if (filePath.startsWith("./sdCardFiles/gpsLogs/") === true) {
+				//Add the Array Brackets
+				response.end("[" + content + "]", 'utf-8');
+			} else {
+				
+				response.end(content, 'utf-8');
+			}
+            
         }
     });
 }
@@ -126,13 +133,13 @@ http.createServer(function (request, response) {
 			        // add local file
 			        if (fs.lstatSync(path.join(folderpath, file)).isFile()) {
 			            if (excludedFileNames.includes(file) === false) {
-			                response.write(addComma + '{"dev":"sd", "type":"file","name":"' + file + '"}', 'utf-8');
+			                response.write(addComma + '{"type":"file","name":"' + file + '"}', 'utf-8');
 			            }
 			            //writeToLog("added file to zip " + path.join(folderpath, file) );
 			        } else {
 			            if (fs.lstatSync(path.join(folderpath, file)).isDirectory()) {
 			                if (excludedFolders.includes(file) === false) {
-			                 	response.write(addComma + '{"dev":"sd", "type":"dir","name":"' + file + '"}', 'utf-8');   
+			                 	response.write(addComma + '{"type":"dir","name":"' + file + '"}', 'utf-8');   
 			                }
 			            }
 			        }

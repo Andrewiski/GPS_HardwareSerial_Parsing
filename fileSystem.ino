@@ -77,13 +77,41 @@ bool handleFileRead(String path) {
       Serial.println("handleFileRead SD with gz: " + path);
     }
     File file = SD.open(path, "r");
-    Server.streamFile(file, contentType);
+    if (path.startsWith("/gpsLogs/")){
+      //this is a special case where we need to add the [] to the file.
+      Serial.println("Send GPS Data File " + path);
+        Server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate"); 
+        Server.sendHeader("Pragma", "no-cache"); 
+        Server.sendHeader("Expires", "-1"); 
+        Server.setContentLength(CONTENT_LENGTH_UNKNOWN); 
+        Server.send(200, contentType, ""); // Empty content inhibits Content-length header so we have to close the socket ourselves.
+        Server.sendContent("[");
+        char dataBuf[257];
+        int dataBufIndex = 0;
+        while(file.available()){
+            dataBuf[dataBufIndex] = file.read();
+            dataBufIndex++;
+            if (dataBufIndex == 256){
+              dataBuf[256] = 0;
+              Server.sendContent(String(dataBuf));
+              dataBufIndex = 0;
+            }
+        } 
+        if (dataBufIndex > 0){
+              dataBuf[dataBufIndex] = 0;
+              Server.sendContent(String(dataBuf));
+              dataBufIndex = 0;
+            }
+        Server.sendContent("]");
+        Server.client().stop(); // Stop is needed because no content length was sent
+    }else{
+      Server.streamFile(file, contentType);
+    }
     file.close();
     return true;
   }else{
     return false;  
   }
-  
 }
 
 
@@ -177,8 +205,10 @@ void handleFileList() {
           if (output != "[") {
             output += ',';
           }
-          output += "{\"dev\":\"spiffs\", \"type\":\"";
+          output += "{\"type\":\"";
           output += (file.isDirectory()) ? "dir" : "file";
+          output += "\",\"lw\":\"";
+          output += String(file.getLastWrite());
           output += "\",\"name\":\"";
           output += String(file.name()).substring(path.length());
           output += "\"}";
@@ -222,6 +252,9 @@ void listDir( String dirname, uint8_t levels){
             Serial.print(file.name());
             Serial.print("  SIZE: ");
             Serial.println(file.size());
+//            Serial.print("  LW: ");
+//            Serial.println(file.getLastWrite());
+            
         }
         file = root.openNextFile();
     }

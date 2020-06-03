@@ -7,7 +7,7 @@ GpsPosition::GpsPosition() {
 
 GpsPosition::GpsPosition(Adafruit_GPS GPS){
   common_init();
-  valid = true;
+  valid = GPS.fix;
   lat =  GPS.latitudeDegrees;
   lng = GPS.longitudeDegrees;
   hour = GPS.hour;          
@@ -27,10 +27,13 @@ GpsPosition::GpsPosition(Adafruit_GPS GPS){
 }
 
 void GpsPosition::common_init(void){
-  hour = minute = seconds = year = month = day = fixquality = fixquality_3d = satellites = 0;  // uint8_t
-  valid = false;         // bool
-  milliseconds = 0;    // uint16_t
-  lat = lng =  altitude = speed = angle = magvariation = 0.0;
+    year = 1970;
+    month = day = 1;
+    hour = minute = seconds = 0;
+    fixquality = fixquality_3d = satellites = 0;  // uint8_t
+    valid = false;         // bool
+    milliseconds = 0;    // uint16_t
+    lat = lng =  altitude = speed = angle = magvariation = 0.0;
 }
 
 
@@ -82,5 +85,13 @@ String GpsPosition::getTimestamp(String type){
 }
 
 String GpsPosition::getJson(){
-    return "{\"valid\":true, \"lat\":"  + String(lat, 6) + ", \"lng\":"  + String(lng, 6) + ", \"time\":\"" + getJsonTimestamp() + "\", \"angle\": " + String(angle, 3) + "}";
+    String isValid;
+    if (valid == 1) {
+        isValid = "true";
+    }
+    else {
+        isValid = "false";
+    }
+    return "{\"valid\":" + isValid + ", \"lat\":"  + String(lat, 6) + ", \"lng\":"  + String(lng, 6) + ", \"time\":\"" + getJsonTimestamp() + "\", \"angle\": " + String(angle, 3) + ", \"speed\": " + String(speed, 3) + ", \"altitude\": " + String(altitude, 3) + ", \"magvariation\": " + String(magvariation, 3) + ", \"fixquality\": " + String(fixquality) + ", \"fixquality3d\": " + String(fixquality_3d) + ", \"satellites\": " + String(satellites) + "}";
+    
 }

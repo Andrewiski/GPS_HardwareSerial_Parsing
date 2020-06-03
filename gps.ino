@@ -1,4 +1,4 @@
-
+#define AC_DEBUG
 #define _USE_MATH_DEFINES
 #include <Adafruit_GPS.h>
 #include <math.h>
@@ -51,6 +51,7 @@ void getGpsDataHandler(){
       return;
   }
   Serial.print("Read from file");
+
   while(file.available()){
       Data += char(file.read());
   }
@@ -166,13 +167,13 @@ void gpsLoop(){
   // approximately every 10 seconds or so, print out the current stats
   if (millis() - gpsTimer > 10000) {
     gpsTimer = millis();  // reset the gpsTimer
+    currentPosition = GpsPosition(GPS);
     if(GPS.fix){
-      currentPosition = GpsPosition(GPS);
-      if (currentFilename == ""){
+      if (sdCardType != CARD_NONE && currentFilename == ""){
         currentFilename = currentPosition.getFilename() + ".json";
         writeFile("/gpsLogs/" + currentFilename, currentPosition.getJson());
         gpsPositions[gpsPositionsIndex] = currentPosition;
-         gpsPositionsIndex++;
+        gpsPositionsIndex++;
       }
       float distanceMoved =  distanceInKmBetweenEarthCoordinates(last_latitude, last_longitude, GPS.latitudeDegrees, GPS.longitudeDegrees);
       if ( distanceMoved >= log_mindistance && ( distanceMoved >= log_distance || abs(last_angle - GPS.angle) >= log_angle ||  abs(last_speed - GPS.speed) >= log_speed)){ 
@@ -187,10 +188,10 @@ void gpsLoop(){
           gpsPositionsIndex = 0;
          }
       }else{
-        Serial.println("distance Moved was only " + String(distanceMoved));
+        Serial.println(currentPosition.getJsonTimestamp() + " distance Moved was only " + String(distanceMoved));
       }
     }else{
-        Serial.println("No GPS Fix!~");
+        Serial.println(currentPosition.getJsonTimestamp() + " No GPS Fix! Satellites:" + String(currentPosition.satellites));
     }
  }
 }
