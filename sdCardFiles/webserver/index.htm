@@ -8,9 +8,11 @@
 			height: 700px;
 			width: 100%;
 		}
-		.gpsLogFile{
+		.gpsTrack{
 			cursor:pointer;
-
+		}
+		.gpsTracks{
+			font-size:x-small;
 		}
 	</style>
 
@@ -27,32 +29,101 @@
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" integrity="sha256-eZrrJcwDc/3uDhsdt61sL2oOBY362qM3lon1gyExkL0=" crossorigin="anonymous" />
 	<script src="https://code.jquery.com/jquery-3.5.1.min.js" type="text/javascript"></script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.26.0/moment-with-locales.min.js" integrity="sha256-4HOrwHz9ACPZBxAav7mYYlbeMiAL0h6+lZ36cLNpR+E=" crossorigin="anonymous"></script>
-	<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBP-sX_MQ4FVCbm2v478-vEcubrio73lS4" type="text/javascript"></script>
+	<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBZ8dOoDr5V62sJD2YBb0flw6RxOA5FhJE" type="text/javascript"></script>
 	<script>
 
-		var sampleData = [
-			{ "valid": true, "lat": 37.727, "lng": -96.707, "date": "2020-05-12T19:21:26.000Z", "ang": 182 },
-			{ "valid": true, "lat": 38.971, "lng": -92.713, "date": "2020-05-12T19:21:26.000Z", "ang": 182 },
-			{ "valid": true, "lat": 36.172, "lng": -89.415, "date": "2020-05-12T19:21:26.000Z", "ang": 182 }
-		];
+        var commonData =
+        {
+            devices: {} 
+        }
 
-
+        addDevice({ deviceName: "localDevice" });
+		addTrackLog({ deviceName: "localDevice", trackName:"current" })
         var refreshRate = 10000;
         var getCurrentPathInterval = null;
 		var map = null;
 		var mapCenter = { lat: 39.000000, lng: -99.000000 };
-		var position = { lat: 39.000000, lng: -99.000000 };
-		var GpsCoordinates = [];
-		var GpsCoordinates0 = [];
-		var trackPath = null;
 		var askedDate = null;
-		var infoWindow = null;
 
-		function setMapOnAll(map) {
-			for (var i = 0; i < GpsCoordinates0.length; i++) {
-				GpsCoordinates0[i].setMap(map);
-			}
+		var carImg = "M17.402,0H5.643C2.526,0,0,3.467,0,6.584v34.804c0,3.116,2.526,5.644,5.643,5.644h11.759c3.116,0,5.644-2.527,5.644-5.644 V6.584C23.044,3.467,20.518,0,17.402,0z M22.057,14.188v11.665l-2.729,0.351v-4.806L22.057,14.188z M20.625,10.773 c-1.016,3.9-2.219,8.51-2.219,8.51H4.638l-2.222-8.51C2.417,10.773,11.3,7.755,20.625,10.773z M3.748,21.713v4.492l-2.73-0.349 V14.502L3.748,21.713z M1.018,37.938V27.579l2.73,0.343v8.196L1.018,37.938z M2.575,40.882l2.218-3.336h13.771l2.219,3.336H2.575z M19.328,35.805v-7.872l2.729-0.355v10.048L19.328,35.805z";
+		var carIcon = {
+		  path: carImg,
+		  scale: .7,
+		  strokeColor: 'white',
+		  strokeWeight: .10,
+		  fillOpacity: 1,
+		  fillColor: '#404040',
+		  offset: '5%',
+		  // rotation: parseInt(heading[i]),
+		  anchor: new google.maps.Point(10, 25) // orig 10,50 back of car, 10,0 front of car, 10,25 center of car
+		};
+
+		function zoomToFit(path) {
+		  var bounds = new google.maps.LatLngBounds();
+		  path.forEach(function(latLng) {
+			bounds.extend(latLng);
+		  });
+		  map.fitBounds(bounds);                    
 		}
+
+		function markersClearMap(markers) {
+		  markers.forEach(function(marker) {
+			marker.setMap(null);
+		  });                  
+		}
+
+
+        function addTrackLog(options) {
+            var device = commonData.devices[options.deviceName];
+            var trackLog = {
+				name: options.trackName,
+                mapMarkers: [],
+                mapPath: null,
+                gpsData: []
+            };
+
+            device.trackLogs[options.trackName] = trackLog;
+
+            trackLog.mapPath = new google.maps.Polyline({
+				geodesic: true,
+				strokeColor: '#FF0000',
+				strokeOpacity: 1.0,
+				strokeWeight: 2
+            });
+
+			google.maps.event.addListener(trackLog.mapPath, 'click', function(h) {
+				 var latlng=h.latLng;
+				 var needle = {
+					 minDistance: 9999999999, //silly high
+					 index: -1,
+                     latlng: null,
+					 data:null
+				 };
+				 trackLog.mapPath.getPath().forEach(function(routePoint, index){
+					 var dist = google.maps.geometry.spherical.computeDistanceBetween(latlng, routePoint);
+					 if (dist < needle.minDistance){
+						needle.minDistance = dist;
+						needle.index = index;
+						needle.latlng = routePoint;
+					 }
+				 });
+				 // The closest point in the polyline
+				 alert("Closest index: " + needle.index + " Speed:" + trackLog.gpsData[needle.index].speed );
+
+				 // The clicked point on the polyline
+				 //alert(latlng);
+
+            });
+        }
+
+        function addDevice(options) {
+
+            var device = {
+                deviceName: options.deviceName, 
+                trackLogs: {}
+            }
+            commonData.devices[options.deviceName] = device;
+        }
 
 		function getUrlVars() {
 			var vars = [], hash;
@@ -71,12 +142,8 @@
 				center: mapCenter
 			});
 
-			trackPath = new google.maps.Polyline({
-				geodesic: true,
-				strokeColor: '#FF0000',
-				strokeOpacity: 1.0,
-				strokeWeight: 2
-			});
+			
+
 			// Create the DIV to hold the control and call the CenterControl()
 			// constructor passing in this DIV.
 			var controlsDiv = $('.googleMapControls')
@@ -99,6 +166,7 @@
         }
 
         function getCurrentPathClick() {
+            
             getCurrentPath();
             startCurrentPathTimer();
         }
@@ -122,8 +190,6 @@
 
 		function getGPSCurrentPath() {
 			var defer = $.Deferred();
-
-			askedDate = document.getElementById("Date").value;
 			$.ajax({
 				url: "/getCurrentPath",
 				dataType: "json",
@@ -139,7 +205,7 @@
 
         function startCurrentPathTimer() {
             if (getCurrentPathInterval == null) {
-				getCurrentPathInterval = setInterval(getGPSCurrentPath, refreshRate);
+				getCurrentPathInterval = setInterval(getCurrentPath, refreshRate);
             }
         }
 
@@ -207,35 +273,42 @@
 			})
 		};
 
-		function getCurrentPath() {
-			console.log("Getting Current Path");
+        function getCurrentPath() {
+            var deviceName = "localDevice";
+			var trackName = "current";
+			console.log("Getting Current Path " + deviceName);
 
 			getGPSCurrentPath().then(function (data) {
-
-
-				setMapOnAll(null);
-				GpsCoordinates0 = [];
-				trackPath.setMap(null);
-				GpsCoordinates = [];
+                var trackLog = commonData.devices[deviceName].trackLogs[trackName];
+                markersClearMap(trackLog.mapMarkers);
+				trackLog.mapMarkers = [];
+				trackLog.mapPath.setMap(null);
+                var mapPathPoints = [];
+                trackLog.gpsData = data;
 				$.each(data, function (index, item) {
 					if (item.valid === true) {
-						position.lat = item.lat;
-						position.lng = item.lng;
-						//console.log("Got Position", position);
-						GpsCoordinates.push({ lat: item.lat, lng: item.lng });
-
-						infoWindow = new google.maps.InfoWindow({
-							position: position,
-							Content: moment(item.time).format("LTS") + "<br/> Speed:" + item.speed + "<br/>Angle:" + item.angle,
-							map: map
-						});
-						GpsCoordinates0.push(infoWindow);
+						
+                        mapPathPoints.push({ lat: item.lat, lng: item.lng});
+						if (index == data.length-1) {
+							var marker = new google.maps.Marker({
+								position: { lat: item.lat, lng: item.lng },
+                                title: moment(item.time).format("LTS") + "\n Speed:" + item.speed + "\n Angle:" + item.angle,
+								icon: carIcon,
+								map: map
+							});
+							marker.addListener('click', function () {
+								var infoWindow = new google.maps.InfoWindow({
+									Content: moment(item.time).format("LTS") + "<br/> Speed:" + item.speed + "<br/>Angle:" + item.angle
+								});
+								infoWindow.open(map, marker);
+							});
+							trackLog.mapMarkers.push(marker);
+						}
 					}
 				});
-				console.log("coordinates are", GpsCoordinates);
-				//drawPolyLines();
-				trackPath.setPath(GpsCoordinates);
-				trackPath.setMap(map);
+				trackLog.mapPath.setPath(mapPathPoints);
+                trackLog.mapPath.setMap(map);
+                zoomToFit(mapPathPoints);
 				//setTimeout(updateMap, refreshRate);
 			}, function (jqXHR, textStatus, errorThrown) {
 				console.log("Error Getting GPS Data", textStatus, errorThrown);
@@ -244,42 +317,73 @@
 		};
 
 
-		function getGpsLogFile(evt) {
-			console.log("Getting GPS Log File");
-            var fileName = $(evt.currentTarget).attr("data-file");
-            $.get({ url: '/gpsLogs/' + fileName }).then(function (data) {
+        function getGpsLogFile(evt) {
+            var deviceName = 'localDevice';
+            console.log("Getting GPS Log File");
+            var $gpsTrack = $(evt.currentTarget);
+            var fileName = $gpsTrack.attr("data-trackName");
+            var trackName = fileName;
+            var device = commonData.devices[deviceName];
+			if (commonData.devices[deviceName].trackLogs[trackName] === undefined) {
+                addTrackLog({ deviceName: deviceName, trackName: fileName });
+            } 
+            var trackLog = commonData.devices[deviceName].trackLogs[trackName];
+            var isGpsTrackVisible = $gpsTrack.find(".gpsTrackVisible").prop("checked");
+			
+            if (isGpsTrackVisible === false) {
+                markersClearMap(trackLog.mapMarkers);
+                trackLog.mapMarkers = [];
+                trackLog.mapPath.setMap(null);
+            } else {
+                $.get({ url: '/gpsLogs/' + fileName }).then(
+                    function (data) {
+                        markersClearMap(trackLog.mapMarkers);
+                        trackLog.mapMarkers = [];
+                        trackLog.mapPath.setMap(null);
+                        var mapPathPoints = [];
+                        $.each(data, function (index, item) {
+                            mapPathPoints.push({ lat: item.lat, lng: item.lng });
+                            if (index == 0) {
+                                var marker = new google.maps.Marker({
+                                    position: { lat: item.lat, lng: item.lng },
+                                    label: (index == 0) ? "A" : "B",
+                                    map: map
+                                });
+                                marker.addListener('click', function () {
+                                    var infoWindow = new google.maps.InfoWindow({
+                                        Content: moment(item.time).format("LTS") + "<br/> Speed:" + item.speed + "<br/>Angle:" + item.angle
+                                    });
+                                    infoWindow.open(map, marker);
+                                });
+                                trackLog.mapMarkers.push(marker);
+                            }
+                            if (index == data.length - 1) {
+                                var marker = new google.maps.Marker({
+                                    position: { lat: item.lat, lng: item.lng },
+                                    title: moment(item.time).format("LTS") + "\n Speed:" + item.speed + "\n Angle:" + item.angle,
+                                    icon: carIcon,
+                                    map: map
+                                });
+                                marker.addListener('click', function () {
+                                    var infoWindow = new google.maps.InfoWindow({
+                                        Content: moment(item.time).format("LTS") + "<br/> Speed:" + item.speed + "<br/>Angle:" + item.angle
+                                    });
+                                    infoWindow.open(map, marker);
+                                });
+                                trackLog.mapMarkers.push(marker);
+                            }
+                        });
+                        //console.log("coordinates are", GpsCoordinates);
+                        //drawPolyLines();
+                        trackLog.mapPath.setPath(mapPathPoints);
+                        trackLog.mapPath.setMap(map);
+                        zoomToFit(mapPathPoints);
 
-
-                //var data = JSON.parse("[" + rawFile + "]");
-
-				setMapOnAll(null);
-				GpsCoordinates0 = [];
-				trackPath.setMap(null);
-				GpsCoordinates = [];
-				$.each(data, function (index, item) {
-					position.lat = item.lat;
-					position.lng = item.lng;
-					//console.log("Got Position", position);
-					GpsCoordinates.push({ lat: item.lat, lng: item.lng });
-
-
-
-					infoWindow = new google.maps.InfoWindow({
-						position: position,
-						Content:  moment(item.time).format("LTS"),
-						map: map
-					});
-					GpsCoordinates0.push(infoWindow);
-				});
-				//console.log("coordinates are", GpsCoordinates);
-				//drawPolyLines();
-				trackPath.setPath(GpsCoordinates);
-				trackPath.setMap(map);
-				
-			}, function (jqXHR, textStatus, errorThrown) {
-				console.log("Error Getting GPS Data", textStatus, errorThrown);
-				//setTimeout(updateMap, refreshRate);
-			})
+                    }, function (jqXHR, textStatus, errorThrown) {
+                        console.log("Error Getting GPS Data", textStatus, errorThrown);
+                        //setTimeout(updateMap, refreshRate);
+                    })
+            }
 		};
 		/*function drawPolyLines() {
 		   trackPath = new google.maps.Polyline({
@@ -303,15 +407,21 @@
 			getAutoConnectMenu();
 			initMap();
 			centerMapCurrentPosition();
-            $('.btnGpsFileRefresh').on("click", function () {
+            $('.btnDeviceTracksRefresh').on("click", function () {
                 getGPSLogFiles().then(
                     function (data) {
-						var gpsFileList = $('.gpsLogFiles')
-                        gpsFileList.empty();
-						$.each(data, function (index, item) {
-                            gpsFileList.append('<tr><td><div class="gpsLogFile" data-file="' + item.name + '">' + item.name + '</div></td></tr>');	
+                        var $gpsTrackList = $('.gpsTracks')
+                        var $gpsTrackTemplate = $('.gpsTrackTemplate').find(".gpsTrack");
+                        $gpsTrackList.empty();
+                        $.each(data, function (index, item) {
+                            var $gpsTrack = $gpsTrackTemplate.clone(true);
+                            var fileDate = moment.utc(item.name, "YYYYMMDD_hhmmss.json").local();
+                            $gpsTrack.attr('data-trackName', item.name);
+                            $gpsTrack.find('.gpsTrackLabel').html(fileDate.format("L") + '&nbsp;' + fileDate.format("LT"));
+                            $gpsTrack.on("click", getGpsLogFile); 
+                            $gpsTrackList.append($gpsTrack);
                         });
-                        $('.gpsLogFile').on("click", getGpsLogFile);
+                        
 						
                     },
                     function (jqXHR, textStatus, errorThrown) {
@@ -325,7 +435,8 @@
 </head>
     <body>
 	
-		<div style="width:100%">
+		<div style="        width: 100%
+">
 			<div style="display:inline-block; float:left"><div class="menu"></div></div>
 			<div style="width:100%; text-align: center">
 				<h3>Teo GPS Tracker</h3>
@@ -338,23 +449,7 @@
 			
 
 			<div style="width:100%">
-				<table style="width:100%">
-					<tr>
-						<td style="width:100px">
-							<table>
-								<thead>
-									<tr>
-										<th><div class="btnGpsFileRefresh"><i class="fa fa-refresh"></i></div></th>
-									</tr>
-								</thead>
-								<tbody class="gpsLogFiles">
-
-								</tbody>
-							</table>
-						</td>
-						<td><div id="map"></div></td>
-					</tr>
-				</table>
+				<div id="map"></div>
 			</div>
 		</div>
 		<div class="templates" style="display:none">
@@ -366,11 +461,24 @@
 					<div class="btnCurrentPath" title="Current Path" style="color: rgb(25, 25, 25); font-family: Roboto, Arial, sans-serif; font-size: 16px; line-height: 38px; padding-left: 5px; padding-right: 5px; cursor: pointer;">
 						<i class="fa fa-map-o" aria-hidden="true"></i>
 					</div>
+					<div class="">
+						<table>
+							<thead>
+								<tr>
+									<th><div class="btnDeviceTracksRefresh">Tracks <i class="fa fa-refresh"></i></div></th>
+								</tr>
+							</thead>
+							<tbody class="gpsTracks">
+							</tbody>
+						</table>
+					</div>
 				</div>
 			</div>
+			<div class="googleMapDeviceControls">
 
-			<table>
-				<tr class="gpsLogFile"></tr>
+			</div>
+			<table class="gpsTrackTemplate">
+				<tr class="gpsTrack"><td><input type="checkbox" class="gpsTrackVisible" /><span class="gpsTrackLabel">AA</span></td></tr>
 			</table>
 		</div>
 </body>
